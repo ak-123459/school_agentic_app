@@ -4,8 +4,9 @@ Insert validated data into the correct table(s).
 Zero LLM calls. Rollback on any error.
 """
 import json
-from app.data.db.mysql_db.connection import get_connection
+from knowledge_store.mysql_db.connection import get_connection
 from datetime import datetime
+
 
 
 class Inserter:

@@ -7,16 +7,16 @@ LLM loaded ONCE here → passed to steps that need it.
 """
 import os, json, asyncio
 from datetime import datetime
-from app.data.db.manager.preprocessor import Preprocessor  # ← separate file
-from app.data.db.manager.classifier   import Classifier
-from app.data.db.manager.extractor    import Extractor
-from app.data.db.manager.validator    import Validator
-from app.data.db.manager.inserter     import Inserter
-from app.src.llm.chat_llm             import llm_loader
+from data_pipeline.manager.preprocessor import Preprocessor  # ← separate file
+from data_pipeline.manager.classifier   import Classifier
+from data_pipeline.manager.extractor    import Extractor
+from data_pipeline.manager.validator    import Validator
+from data_pipeline.manager.inserter     import Inserter
+from reasoning_engine.llm.chat_llm      import llm_loader
 import logging
 
 
-log = logging.getLogger("aptal_edu")  # ← same logger as fast_api.py
+log = logging.getLogger("aptal_edu")  # ← same logger as knowledge_ingest_api.py
 
 
 class DocumentPipeline:

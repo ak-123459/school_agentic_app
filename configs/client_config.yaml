@@ -19,12 +19,12 @@ channels:   1
 rate:       16000
 
 # ── Sound File Paths ──────────────────────────────────────────
-response_audio_path: "app/sounds/ding.mp3"
-hitl_confirm_sound:  "app/sounds/response_user.wav"
-hitl_review_sound:   "app/sounds/notification.mp3"
-instruction_sound:   "app/sounds/say_uptal.wav"
-wait_moment_sound:   "app/sounds/wait_moment.wav"
-thinking_sound:      "app/sounds/thinking.mp3"
+response_audio_path: "reasoning_engine/sounds/ding.mp3"
+hitl_confirm_sound:  "reasoning_engine/sounds/response_user.wav"
+hitl_review_sound:   "reasoning_engine/sounds/notification.mp3"
+instruction_sound:   "reasoning_engine/sounds/say_uptal.wav"
+wait_moment_sound:   "reasoning_engine/sounds/wait_moment.wav"
+thinking_sound:      "reasoning_engine/sounds/thinking.mp3"
 
 # ── WebRTC VAD ────────────────────────────────────────────────
 vad_mode:           3

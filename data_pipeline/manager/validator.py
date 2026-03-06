@@ -6,7 +6,7 @@ DB empty (first upload) OR DB full → always works.
 """
 
 import uuid, re
-from app.data.db.mysql_db.connection import get_connection
+from knowledge_store.mysql_db.connection import get_connection
 from datetime import datetime
 
 

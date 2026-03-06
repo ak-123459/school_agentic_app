@@ -1,4 +1,4 @@
-from app.tools.functions.function import (
+from reasoning_engine.tools.functions.function import (
     get_class_timetable,
     get_exam_timetable,
     get_exam_result,

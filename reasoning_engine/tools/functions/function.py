@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 import sqlite3
 logger = logging.getLogger(__name__)
-from reasoning_engine.tools_input.preprocess import normalize_class_name,_clean_content
+from reasoning_engine.tools.tools_input.preprocess import normalize_class_name,_clean_content
 import yaml
 
 

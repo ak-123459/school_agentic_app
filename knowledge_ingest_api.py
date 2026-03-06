@@ -1,164 +1,297 @@
 """
-knowledge_ingest_api.py
-===========
-FastAPI server — correct startup sequence:
-
-  1. Load LLM
-  2. Load Embedder
-  3. CREATE all per-key FAISS indexes  (skips already-existing ones)
-  4. Init RAG tools  (SchoolFaissLoader + SchoolRAGManager)
-  5. Load default index for ChatManager
-
-Each tool call then loads its OWN specific index on demand via
-SchoolFaissLoader.get_retriever(key_name).
+EDUMIND AI — FastAPI Document Upload Server
 """
-
-from fastapi import FastAPI, HTTPException
-from app.assistant import ChatManager
-from app.models.schemas import ChatInput, ChatOutput
-from dotenv import load_dotenv
 import os
+import json
+import asyncio
+import tempfile
 import logging
 import traceback
-import time
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()  # ← load .env before anything else
+
+# ── Logging setup ─────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("fast_api.log", mode="a", encoding="utf-8"),
+    ]
+)
+log = logging.getLogger("aptal_edu")
+
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-import yaml
+from fastapi.responses import StreamingResponse, JSONResponse
 
-from app.settings import MODEL_CONFIG_PATH, EMBD_MODEL_DIR, DOCS_PATH, VECTOR_STORE_PATH
-from app.src.llm.chat_llm import llm_loader
-from app.src.embedder.embedder_factory import EMBFactory
-from app.src.vector_database.vector_db_factory import VECTORDBFactory
-from app.rag_pipeline.tools.school_rag_tools import init_rag_tools
+# ── Import pipeline ───────────────────────────────────────────────────────────
+try:
+    from data_pipeline.manager.pipeline import DocumentPipeline
+    PIPELINE_AVAILABLE = True
+    log.info("✅ Pipeline imported successfully")
+except Exception as e:
+    PIPELINE_AVAILABLE = False
+    log.error(f"❌ Pipeline import failed: {e}")
+    log.error(traceback.format_exc())
 
-SCHOOL_YAML_PATH = os.path.join(os.path.dirname(__file__), "app/config/school_vector_indexes.yaml")
-
-print("=== Starting the app ===")
-load_dotenv()
-logger = logging.getLogger("uvicorn")
-
-llm        = None
-vector_db  = None
-manager    = None
-
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-
-
-def load_config(config_path=MODEL_CONFIG_PATH):
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
-
-
-app = FastAPI()
+# ── App setup ─────────────────────────────────────────────────────────────────
+app = FastAPI(
+    title="EduMind AI — Document Pipeline API",
+    version="1.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"])
+    allow_headers=["*"],
+)
+
+# ── Global exception logger ───────────────────────────────────────────────────
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    log.info(f"→ {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        log.info(f"← {response.status_code} {request.url}")
+        return response
+    except Exception as e:
+        log.error(f"💥 Unhandled error on {request.url}: {e}")
+        log.error(traceback.format_exc())
+        raise
+
+# ── Pipeline singleton ────────────────────────────────────────────────────────
+try:
+    pipeline = DocumentPipeline() if PIPELINE_AVAILABLE else None
+    if pipeline:
+        log.info("✅ Pipeline instance created")
+except Exception as e:
+    pipeline = None
+    log.error(f"❌ Pipeline instantiation failed: {e}")
+    log.error(traceback.format_exc())
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".csv", ".xlsx", ".jpg", ".jpeg", ".png"}
+
+# ▼▼▼ ADD 1: size constant — change this one number to adjust the limit ▼▼▼
+MAX_FILE_SIZE = 50 * 1024          # 50 KB  (50 × 1024 bytes)
+# ▲▲▲ ─────────────────────────────────────────────────────────────────── ▲▲▲
 
 
+def _validate_extension(filename: str) -> str:
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+    return ext
 
-@app.on_event("startup")
-async def on_startup():
-    global llm, vector_db, manager
+
+# ▼▼▼ ADD 2: size check inside _save_upload — runs for BOTH /upload routes ▼▼▼
+async def _save_upload(file: UploadFile) -> str:
+    ext     = _validate_extension(file.filename)
+    content = await file.read()                    # read once, reuse below
+
+    # ── Size guard ────────────────────────────────
+    if len(content) > MAX_FILE_SIZE:
+        size_kb  = len(content) / 1024
+        limit_kb = MAX_FILE_SIZE / 1024
+        log.warning(f"🚫 Rejected '{file.filename}': {size_kb:.1f} KB > {limit_kb:.0f} KB limit")
+        raise HTTPException(
+            status_code=413,           # 413 = Payload Too Large (correct HTTP code)
+            detail={
+                "error":    "FILE_TOO_LARGE",
+                "message":  f"File '{file.filename}' is {size_kb:.1f} KB. Maximum allowed size is {limit_kb:.0f} KB.",
+                "size_kb":  round(size_kb, 1),
+                "limit_kb": limit_kb,
+            }
+        )
+    # ─────────────────────────────────────────────
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    tmp.write(content)
+    tmp.close()
+    log.info(f"📁 Saved upload: {file.filename} ({len(content)/1024:.1f} KB) → {tmp.name}")
+    return tmp.name
+# ▲▲▲ ─────────────────────────────────────────────────────────────────── ▲▲▲
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+@app.get("/health")
+def health():
+    return {
+        "status":             "ok",
+        "pipeline_available": PIPELINE_AVAILABLE,
+        "max_upload_kb":      MAX_FILE_SIZE // 1024,   # ← visible in health check
+        "timestamp":          datetime.now().isoformat(),
+    }
+
+# ── 1. Standard upload ────────────────────────────────────────────────────────
+@app.post("/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    school_id: str = Form("SCH_001"),
+    created_by: Optional[str] = Form(None),
+    force_doc_type: Optional[str] = Form(None),
+):
+    tmp_path = await _save_upload(file)   # ← size check happens here, raises 413 if too big
+    log.info(f"📤 /upload → {file.filename} | school={school_id}")
 
     try:
-        model_config  = load_config()
-        chat_llm_args = model_config['chat_llm_args']
-        chat_llm_args['api_key'] = GROQ_API_KEY
-        db_args       = model_config['db_args']
-        db_args['vector_store_path'] = VECTOR_STORE_PATH
-        db_args['docs_path']         = DOCS_PATH
-        embedder_args = model_config['embedder_args']
-        embedder_args['model_path']  = EMBD_MODEL_DIR
+        if not PIPELINE_AVAILABLE:
+            await asyncio.sleep(1)
+            return JSONResponse({
+                "success": True, "file": file.filename,
+                "school_id": school_id, "doc_type": "exam_result",
+                "inserted": 5, "table": "exam_results",
+                "llm_calls": 1, "warnings": [], "demo_mode": True,
+            })
 
-        # ── STEP 1: Load LLM ──────────────────────────────────────────────
-        logger.info("⏳ [STARTUP] Step 1/4 — Loading LLM...")
-        t0  = time.perf_counter()
-        llm = await llm_loader.load()
-        logger.info(f"✅ [STARTUP] LLM ready  ({(time.perf_counter()-t0)*1000:.0f} ms)")
-
-        # ── STEP 2: Load Embedder ─────────────────────────────────────────
-        logger.info("⏳ [STARTUP] Step 2/4 — Loading embedding model...")
-        t0            = time.perf_counter()
-        embedder_pipe = EMBFactory.create_embedder_model_pipeline(
-            embedder_args['type'], **embedder_args
+        result = await pipeline.run_async(
+            file_path=tmp_path,
+            school_id=school_id,
+            created_by=created_by,
+            force_doc_type=force_doc_type,
         )
-        embedding_model = await embedder_pipe.load_model()
-        db_args['embedding_model'] = embedding_model
-        logger.info(f"✅ [STARTUP] Embedder ready  ({(time.perf_counter()-t0)*1000:.0f} ms)")
+        result["original_filename"] = file.filename
 
-        # ── STEP 3: Create all per-key FAISS indexes ──────────────────────
-        #
-        #  This is the KEY step. For each entry in school_vector_indexes.yaml
-        #  it reads docs/<key_name>/ and writes vector_db/<key_name>/index.faiss
-        #  Already-existing indexes are skipped (pass overwrite=True to rebuild).
-        #
-        logger.info("⏳ [STARTUP] Step 3/4 — Creating per-key FAISS indexes...")
-        logger.info(f"   docs root  : {DOCS_PATH}")
-        logger.info(f"   index root : {VECTOR_STORE_PATH}")
-        t0             = time.perf_counter()
-        vector_db_pipe = VECTORDBFactory.create_vector_db_pipeline(**db_args)
-        result         = vector_db_pipe.create_all_key_indexes(overwrite=False)
-        logger.info(
-            f"✅ [STARTUP] Indexes ready — "
-            f"created: {result['created']}, skipped: {result['skipped']}, failed: {result['failed']}"
-            f"  ({(time.perf_counter()-t0)*1000:.0f} ms)"
-        )
+        if result.get("success"):
+            log.info(f"✅ {file.filename} → {result.get('doc_type')} | {result.get('inserted')} rows → {result.get('table')}")
+        else:
+            log.error(f"❌ {file.filename} failed: {result.get('error')}")
 
-        if result['failed'] > 0:
-            logger.warning(
-                f"⚠️  [STARTUP] {result['failed']} key(s) failed — "
-                f"check that docs/<key_name>/ subfolders exist with content."
+        return JSONResponse(result)
+
+    except HTTPException:
+        raise   # re-raise 413 / 415 as-is — don't swallow them
+
+    except Exception as e:
+        log.error(f"💥 /upload exception for {file.filename}: {e}")
+        log.error(traceback.format_exc())
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+# ── 2. Streaming upload (SSE) ─────────────────────────────────────────────────
+@app.post("/upload/stream")
+async def upload_document_stream(
+    file: UploadFile = File(...),
+    school_id: str = Form("SCH_001"),
+    created_by: Optional[str] = Form(None),
+    force_doc_type: Optional[str] = Form(None),
+):
+    # ▼▼▼ ADD 3: for streaming, catch 413 early and return SSE error event ▼▼▼
+    try:
+        tmp_path = await _save_upload(file)   # raises 413 if too big
+    except HTTPException as e:
+        if e.status_code == 413:
+            # Return a proper SSE error so the frontend stream handler gets it
+            async def size_error():
+                err = json.dumps({
+                    "step":    "done",
+                    "success": False,
+                    "error":   e.detail["error"],
+                    "message": f"❌ {e.detail['message']}",
+                    "progress": 100,
+                })
+                yield f"data: {err}\n\n"
+            return StreamingResponse(
+                size_error(),
+                media_type="text/event-stream",
+                status_code=413,
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        raise   # re-raise other HTTP errors (415 etc.)
+    # ▲▲▲ ─────────────────────────────────────────────────────────────────── ▲▲▲
+
+    filename = file.filename
+    log.info(f"📤 /upload/stream → {filename} | school={school_id}")
+
+    async def event_stream():
+        steps = [
+            ("preprocess", f"📄 Extracting text from {filename}...",         20),
+            ("classify",   "🧠 Classifying document type...",                 40),
+            ("extract",    "⚡ Extracting structured data (1 LLM call)...",   60),
+            ("validate",   "🔒 Validating & resolving DB references...",       80),
+            ("insert",     "💾 Inserting records into database...",            95),
+        ]
+
+        try:
+            if not PIPELINE_AVAILABLE:
+                for step_id, msg, prog in steps:
+                    payload = json.dumps({"step": step_id, "message": msg, "progress": prog})
+                    yield f"data: {payload}\n\n"
+                    await asyncio.sleep(0.9)
+                done = json.dumps({
+                    "step": "done", "success": True, "file": filename,
+                    "doc_type": "exam_result", "inserted": 5,
+                    "table": "exam_results", "llm_calls": 1, "warnings": [],
+                    "message": "✅ All records inserted successfully!",
+                    "demo_mode": True,
+                })
+                yield f"data: {done}\n\n"
+                return
+
+            for step_id, msg, prog in steps:
+                log.info(f"  ⚙️  [{filename}] {msg}")
+                payload = json.dumps({"step": step_id, "message": msg, "progress": prog})
+                yield f"data: {payload}\n\n"
+                await asyncio.sleep(0.3)
+
+            result = await pipeline.run_async(
+                file_path=tmp_path,
+                created_by=created_by,
+                force_doc_type=force_doc_type,
             )
 
-        # ── STEP 4: Init RAG tools ────────────────────────────────────────
-        #
-        #  SchoolFaissLoader is created here.
-        #  It does NOT load any indexes yet — each index is loaded lazily
-        #  on the FIRST tool call that needs it, then cached in memory.
-        #
-        logger.info("⏳ [STARTUP] Step 4/4 — Initialising RAG tools...")
-        t0 = time.perf_counter()
-        init_rag_tools(
-            llm                 = llm,
-            embeddings          = embedding_model,
-            base_vector_db_path = str(VECTOR_STORE_PATH),
-            yaml_path           = SCHOOL_YAML_PATH,
-        )
-        logger.info(f"✅ [STARTUP] RAG tools ready  ({(time.perf_counter()-t0)*1000:.0f} ms)")
+            result["original_filename"] = filename
+            result["step"]     = "done"
+            result["progress"] = 100
 
-        # ── Load default index for ChatManager ────────────────────────────
-        logger.info("⏳ [STARTUP] Loading default index for ChatManager...")
-        t0        = time.perf_counter()
-        vector_db = await vector_db_pipe.load_faiss_db("get_exam_timetable")
-        manager   = ChatManager(llm, vector_db.as_retriever())
-        _         = vector_db.as_retriever().invoke("startup test")
-        logger.info(f"✅ [STARTUP] ChatManager ready  ({(time.perf_counter()-t0)*1000:.0f} ms)")
+            if result.get("success"):
+                msg = f"✅ {result.get('inserted', 0)} records inserted into <strong>{result.get('table','DB')}</strong>"
+                log.info(f"✅ [{filename}] {result.get('doc_type')} | {result.get('inserted')} rows → {result.get('table')}")
+            else:
+                msg = f"❌ {result.get('error', 'Unknown error')}"
+                log.error(f"❌ [{filename}] pipeline failed: {result.get('error')}")
 
-        logger.info("🚀 [STARTUP] All components initialized. Server is ready.")
+            result["message"] = msg
+            yield f"data: {json.dumps(result)}\n\n"
 
-    except Exception:
-        logger.error("❌ [STARTUP] Failed:\n%s", traceback.format_exc())
-        raise RuntimeError("Startup initialization failed.")
+        except Exception as exc:
+            log.error(f"💥 /upload/stream exception for {filename}: {exc}")
+            log.error(traceback.format_exc())
+            err = json.dumps({
+                "step": "done", "success": False,
+                "error": str(exc),
+                "message": f"❌ Server error: {exc}",
+                "progress": 100,
+            })
+            yield f"data: {err}\n\n"
+
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+                log.info(f"🗑️  Cleaned up temp file for {filename}")
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
-@app.get("/")
-def health_check():
-    return {'health': 'ok'}
-
-
-@app.post("/chat", response_model=ChatOutput)
-async def get_response(request: ChatInput):
-    global manager
-    try:
-        logger.info(f"📥 Received query: {request.query}")
-        t0       = time.perf_counter()
-        response = await manager.run(request.query, request.last_3_turn)
-        logger.info(f"⚡ Latency: {(time.perf_counter()-t0)*1000:.0f} ms")
-        logger.info(f"📤 Response: {response}")
-        return {'response': response}
-    except Exception:
-        logger.error("❌ Error: %s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail="Internal server error")
+# ── Dev entry point ───────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("fast_api:app", host="0.0.0.0", port=8001, reload=True)
