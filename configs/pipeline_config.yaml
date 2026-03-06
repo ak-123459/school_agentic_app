@@ -1,0 +1,139 @@
+# ══════════════════════════════════════════════════════════════
+# pipeline_config.yaml — Regex Patterns, Param Schema, NLP Config
+# ══════════════════════════════════════════════════════════════
+
+# ── Keyword Trigger Patterns ──────────────────────────────────
+
+result_keywords:
+  - "result"
+  - "grade"
+  - "marks"
+  - "score"
+  - "passed"
+  - "failed"
+
+# If ANY of these appear after result_keywords → do NOT trigger exam result
+result_exclude_keywords:
+  - "timetable"
+  - "schedule"
+  - "date"
+  - "when"
+  - "time"
+
+search_keywords:
+  - "latest news"
+  - "recent news"
+  - "news about"
+  - "search for"
+  - "breaking news"
+  - "current news"
+  - "what happened"
+  - "happening in"
+  - "who won"
+  - "cricket score"
+  - "football score"
+  - "stock price"
+  - "weather in"
+  - "price of"
+
+refusal_phrases:
+  - "cannot provide"
+  - "cannot assist"
+  - "cannot answer"
+  - "cannot explain"
+  - "can't explain"
+  - "can't provide"
+  - "don't have access"
+  - "do not have access"
+  - "not able to provide"
+  - "limited to"
+  - "my capabilities"
+  - "my current capabilities"
+  - "beyond my"
+  - "outside my"
+  - "i am not able"
+
+question_starters:
+  - "what"
+  - "how"
+  - "why"
+  - "who"
+  - "when"
+  - "where"
+  - "which"
+  - "explain"
+  - "tell me about"
+  - "describe"
+
+casual_phrases:
+  - "hi"
+  - "hello"
+  - "hey"
+  - "how are you"
+  - "what are you doing"
+  - "who are you"
+  - "what is your name"
+  - "thank you"
+  - "thanks"
+  - "ok"
+  - "okay"
+  - "bye"
+  - "goodbye"
+
+# ── Param Schema ──────────────────────────────────────────────
+param_schema:
+  class_name:
+    description: "class or grade number between 1 and 12"
+    examples: ["3", "4", "10", "12"]
+    invalid: ["English", "Math", "unknown", "second", "next"]
+    min_value: 1
+    max_value: 12
+    max_digits: 2
+    regex_pattern: '\b(?:class|std|standard|grade|klass)?\s*(1[0-2]|[1-9])\b'
+
+  roll_number:
+    description: "student roll number, may be numeric or alphanumeric"
+    examples: ["12", "234330", "STU004", "E665655"]
+    invalid: ["unknown", "null", "none"]
+    max_length: 15
+    regex_pattern: '\b([A-Za-z]{0,3}\d{3,8})\b|\b(\d{1,6})\b'
+
+  section:
+    description: "class section letter A through E"
+    examples: ["A", "B", "C"]
+    invalid: []
+    allowed_values: ["A", "B", "C", "D", "E"]
+    regex_pattern: '\b(?:section|sec)?\s*([A-Ea-e])\b'
+
+# ── Spoken Number Word Mapping ────────────────────────────────
+spoken_numbers:
+  one: "1"
+  first: "1"
+  two: "2"
+  second: "2"
+  three: "3"
+  third: "3"
+  four: "4"
+  fourth: "4"
+  five: "5"
+  fifth: "5"
+  six: "6"
+  sixth: "6"
+  seven: "7"
+  seventh: "7"
+  eight: "8"
+  eighth: "8"
+  nine: "9"
+  ninth: "9"
+  ten: "10"
+  tenth: "10"
+  eleven: "11"
+  eleventh: "11"
+  twelve: "12"
+  twelfth: "12"
+
+# ── Thresholds ────────────────────────────────────────────────
+thresholds:
+  energy_threshold: 4000
+  max_retries: 2
+  stt_beam_size: 3

@@ -1,0 +1,49 @@
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+
+# ── Wake Word ─────────────────────────────────────────────────
+model_path:           "utils/wakeword_models/onnx/up_tal.onnx"
+detection_threshold:  0.0015
+enable_speex:         false
+vad_threshold:        null
+smoothing_window:     5
+cooldown_time:        3.0
+instant_score_gate:   0.001
+
+# ── Audio ─────────────────────────────────────────────────────
+chunk_size: 1280
+format:     paInt16
+channels:   1
+rate:       16000
+
+# ── Sound File Paths ──────────────────────────────────────────
+response_audio_path: "app/sounds/ding.mp3"
+hitl_confirm_sound:  "app/sounds/response_user.wav"
+hitl_review_sound:   "app/sounds/notification.mp3"
+instruction_sound:   "app/sounds/say_uptal.wav"
+wait_moment_sound:   "app/sounds/wait_moment.wav"
+thinking_sound:      "app/sounds/thinking.mp3"
+
+# ── WebRTC VAD ────────────────────────────────────────────────
+vad_mode:           3
+vad_frame_duration: 30
+# vad_frame_size is computed at runtime: int(rate * vad_frame_duration / 1000)
+
+# ── Recording ─────────────────────────────────────────────────
+recording_duration: 10
+min_recording_time: 1.5
+silence_duration:   1.5
+# vad_silence_chunks is computed at runtime: int(silence_duration * 1000 / vad_frame_duration)
+
+# ── Validation ────────────────────────────────────────────────
+min_speech_frames_required: 3
+min_audio_amplitude:        50
+min_speech_percentage:      0.08
+
+# ── WebSocket ─────────────────────────────────────────────────
+websocket_uri: "ws://localhost:8765"
+
+# ── HITL ──────────────────────────────────────────────────────
+hitl_enabled: true

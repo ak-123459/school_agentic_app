@@ -1,0 +1,100 @@
+# ══════════════════════════════════════════════════════════════
+# tools_config.yaml — Tool Access, Guards & RBAC
+# ══════════════════════════════════════════════════════════════
+
+# ── Auto-Approve Tools (no HITL required) ────────────────────
+auto_approve_tools:
+  - "get_current_time"
+  - "get_current_date"
+  - "get_reminders"
+  - "set_reminder"
+  - "delete_reminder"
+  - "send_message"
+  - "get_messages"
+  - "searxng_search"
+
+# ── Wrong Tool Guards ─────────────────────────────────────────
+# Tools that should NOT be called when user asks for exam result
+wrong_for_result:
+  - "get_current_time"
+  - "get_current_date"
+  - "get_reminders"
+  - "send_message"
+  - "get_messages"
+  - "searxng_search"
+
+# Tools that should NOT be called when user wants a web search
+wrong_for_search:
+  - "get_current_time"
+  - "get_current_date"
+  - "send_message"
+  - "get_messages"
+  - "get_exam_result"
+
+# ── Role-Based Tool Access (corporate/enterprise) ─────────────
+tool_access:
+  employee:
+    - "get_current_time"
+    - "get_current_date"
+    - "get_reminders"
+    - "set_reminder"
+    - "searxng_search"
+
+  manager:
+    - "get_current_time"
+    - "get_current_date"
+    - "get_reminders"
+    - "set_reminder"
+    - "searxng_search"
+    - "send_message"
+    - "get_messages"
+    - "get_exam_result"
+
+  admin:
+    - "*"   # all tools
+
+# ── Auto-Approve Per Role ─────────────────────────────────────
+auto_approve_by_role:
+  employee:
+    - "get_current_time"
+    - "get_current_date"
+    - "get_reminders"
+    - "searxng_search"
+
+  manager:
+    - "get_current_time"
+    - "get_current_date"
+    - "get_reminders"
+    - "set_reminder"
+    - "searxng_search"
+    - "send_message"
+
+  admin:
+    - "get_current_time"
+    - "get_current_date"
+    - "get_reminders"
+    - "set_reminder"
+    - "delete_reminder"
+    - "send_message"
+    - "get_messages"
+    - "searxng_search"
+
+# ── Rate Limits Per Role ──────────────────────────────────────
+rate_limits:
+  employee:
+    requests_per_minute: 10
+    max_tokens_per_day: 50000
+  manager:
+    requests_per_minute: 20
+    max_tokens_per_day: 150000
+  admin:
+    requests_per_minute: 60
+    max_tokens_per_day: 500000
+
+# ── Audit & Compliance ────────────────────────────────────────
+audit:
+  enabled: true
+  log_user_messages: false     # privacy — avoid logging raw speech
+  log_tool_calls: true
+  log_function_results: true
+  retention_days: 90

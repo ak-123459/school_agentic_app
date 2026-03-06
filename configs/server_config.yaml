@@ -1,0 +1,37 @@
+# ══════════════════════════════════════════════════════════════
+# server_config.yaml — WebSocket Server & Runtime Settings
+# ══════════════════════════════════════════════════════════════
+
+# ── Server Network ────────────────────────────────────────────
+server:
+  host: "localhost"
+  port: 8765
+  max_size_mb: 50             # max WebSocket message size in MB
+  ping_interval_seconds: 30   # keepalive ping every N seconds
+  ping_timeout_seconds: 120   # close connection if no pong within N seconds
+
+# ── HITL (Human-in-the-Loop) ──────────────────────────────────
+hitl:
+  mode: "review"              # "review" = pause before tool calls
+                              # "auto"   = run tools without approval
+
+# ── Conversation History ──────────────────────────────────────
+conversation:
+  max_history: 7              # max messages to keep in memory
+  keep_recent: 6              # how many recent messages to keep after trim
+
+# ── TTS / Voice Response ──────────────────────────────────────
+tts:
+  max_chars: 300              # truncate responses longer than this for TTS
+
+# ── Error Message Triggers ────────────────────────────────────
+# If any of these substrings appear in an error message,
+# replace with a clean user-facing message instead of raw error
+error_filters:
+  - "error code"
+  - "failed_generation"
+  - "tool_use_failed"
+  - "badrequest"
+  - "http/1.1 4"
+  - "groq"
+  - "'type'"

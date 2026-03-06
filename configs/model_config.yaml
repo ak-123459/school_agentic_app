@@ -1,0 +1,51 @@
+# ══════════════════════════════════════════════════════════════
+# model_config.yaml — LLM + STT Provider & Hardware Settings
+# ══════════════════════════════════════════════════════════════
+
+# ── Active Provider Flags ─────────────────────────────────────
+GROQ_LLM: false          # true = use Groq LLM,      false = use Ollama
+GROQ_STT: false          # true = use Groq Whisper,   false = use faster-whisper locally
+
+# ── LLM Provider Selection ────────────────────────────────────
+LLM_PROVIDER: groq       # groq | ollama | nvidia
+
+# ── LLM Generation Defaults ──────────────────────────────────
+LLM_MAX_TOKENS: 5000
+LLM_SUMMARY_MAX_TOKENS: 256
+LLM_TEMPERATURE: 0.7
+LLM_RETRIES: 2
+LLM_RETRY_DELAY_SECONDS: 0.5
+LLM_MIN_SEARCH_WORDS: 3  # minimum words in user query to trigger search
+
+# ── Groq Settings ─────────────────────────────────────────────
+GROQ_API_KEY: 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
+GROQ_LLM_MODEL: llama-3.3-70b-versatile
+GROQ_STT_MODEL: whisper-large-v3
+
+# ── Ollama Settings ───────────────────────────────────────────
+OLLAMA_BASE_URL: http://localhost:11434
+OLLAMA_MODEL: llama3
+
+# ── NVIDIA Settings ───────────────────────────────────────────
+NVIDIA_API_KEY: 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
+NVIDIA_MODEL: dracarys-llama-3.1-70b-instruct
+NVIDIA_BASE_URL: https://integrate.api.nvidia.com/v1
+
+# ── Local Whisper (faster-whisper) ────────────────────────────
+LOCAL_WHISPER_MODEL:
+  path: reasoning_engine\stt\faster-whisper-medium-int8
+  device: cpu
+  compute_type: int8
+  cpu_threads: 4
+  num_workers: 1
+
+# ── STT / Audio Processing ────────────────────────────────────
+stt:
+  energy_threshold: 4000
+  dynamic_energy_threshold: true
+  beam_size: 3
+  best_of: 3
+  min_silence_duration_ms: 500
+  speech_pad_ms: 200
+  condition_on_previous_text: false
+  word_timestamps: false
